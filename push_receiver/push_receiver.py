@@ -41,12 +41,17 @@ except NameError:
 
 __log = logging.getLogger("push_receiver")
 
+'''
 SERVER_KEY = (
     b"\x04\x33\x94\xf7\xdf\xa1\xeb\xb1\xdc\x03\xa2\x5e\x15\x71\xdb\x48\xd3"
     + b"\x2e\xed\xed\xb2\x34\xdb\xb7\x47\x3a\x0c\x8f\xc4\xcc\xe1\x6f\x3c"
     + b"\x8c\x84\xdf\xab\xb6\x66\x3e\xf2\x0c\xd4\x8b\xfe\xe3\xf9\x76\x2f"
     + b"\x14\x1c\x63\x08\x6a\x6f\x2d\xb1\x1a\x95\xb0\xce\x37\xc0\x9c\x6e"
 )
+'''
+SERVER_KEY = "BDOU99-h67HcA6JeFXHbSNMu7e2yNNu3RzoMj8TM4W88jITfq7ZmPvIM1Iv-4_l2LxQcYwhqby2xGpWwzjfAnG4"
+#myself
+#SERVER_KEY = "BD0Bxstl3PPsPyOnt_MwRK3DihppQZk4uuxmvbnFrrjujQBbZj5HscW0BGkV-Qa_VFQjvV9Lgzq7fH1Ypc8xJwY"
 
 REGISTER_URL = "https://android.clients.google.com/c2dm/register3"
 CHECKIN_URL = "https://android.clients.google.com/checkin"
@@ -132,20 +137,26 @@ def gcm_register(appId, retries=5, **kwargs):
   # contains androidId, securityToken and more
   chk = gcm_check_in()
   __log.debug(chk)
+  __log.debug("11111117")
+  #__log.debug(urlsafe_base64(SERVER_KEY))
+  __log.debug("11111118")
   body = {
       "app": "org.chromium.linux",
       "X-subtype": appId,
       "device": chk["androidId"],
-      "sender": urlsafe_base64(SERVER_KEY)
+      #"sender": urlsafe_base64(SERVER_KEY)
+      "sender": SERVER_KEY
   }
   data = urlencode(body)
   __log.debug(data)
   auth = "AidLogin {}:{}".format(chk["androidId"], chk["securityToken"])
+  __log.debug("1111111111111111111111113")
   req = Request(
       url=REGISTER_URL,
       headers={"Authorization": auth},
       data=data.encode("utf-8")
   )
+  __log.debug("1111111111111111111111114")
   for _ in range(retries):
     resp_data = __do_request(req, retries)
     if b"Error" in resp_data:
@@ -198,9 +209,12 @@ def fcm_register(sender_id, token, retries=5):
 
 def register(sender_id):
   """register gcm and fcm tokens for sender_id"""
-  appId = "wp:receiver.push.com#{}".format(uuid.uuid4())
+  #appId = "wp:receiver.push.com#{}".format(uuid.uuid4())
+  appId = "1:668864563334:web:fda6c3fd4df15f81d76907"
   subscription = gcm_register(appId=appId)
+  __log.debug("11111111111116")
   __log.debug(subscription)
+  
   fcm = fcm_register(sender_id=sender_id, token=subscription["token"])
   __log.debug(fcm)
   res = {"gcm": subscription}
@@ -381,6 +395,59 @@ def listen(credentials, callback, received_persistent_ids=[], obj=None):
   sock.close()
 
 
+
+
+def put (url, data, headers={}):
+    import pycurl
+    from io import BytesIO
+    import urllib
+    """Make a PUT request to the url, using data in the message body,
+    with the additional headers, if any"""
+
+    reply = -1 # default, non-http response
+    buffer=BytesIO()
+
+    curl = pycurl.Curl()
+    curl.setopt(pycurl.URL, url)
+    if len(headers) > 0:
+        curl.setopt(pycurl.HTTPHEADER, [k+': '+v for k,v in headers.items()])
+    #curl.setopt(pycurl.PUT, 1)
+    
+    curl.setopt(pycurl.POST, 1)
+    curl.setopt(pycurl.POSTFIELDS, data)
+    #curl.setopt(pycurl.VERBOSE, 1)    
+    curl.setopt(pycurl.WRITEDATA, buffer)
+    
+    #curl.setopt(pycurl.INFILESIZE, len(data))
+    #databuffer = StringIO(data)
+    #curl.setopt(pycurl.READFUNCTION, databuffer.read)
+    
+    
+    try:
+        curl.perform()
+        reply = curl.getinfo(pycurl.HTTP_CODE)
+    except Exception:
+        pass
+    curl.close()
+    
+    __log.debug(buffer.getvalue().decode('utf-8'))
+
+    return reply
+
+def reg_our_fcm(uuid, token):
+    headers = {"Accept": "application/json", 
+           "device-uuid": uuid,
+           "product-code": "BU-EBC-EUAD-IOS",
+           "product-version-code": "1.0.0",
+           "geo-country": "US",
+           "locale": "en",
+          }
+    url = "http://test.uom.com/api/fcm/reg"
+    #data = 'token=dUDOU_cDzSk:APA91bFvFbRzTI4SYlH3cSiACIY1aZmIz1yZvEKZWgqqRVTZmbJgrnCIN434HzD_irkto04nMGf0XVTsjibnLeZfGPWWQx5weU-osBHSn8VHn826ytVFv6cw8IWC0Slb3_Pvf0Gx6BnF'
+    data = 'token=' + token
+    reply = put (url, data, headers)
+    print("regist uom reply", reply)
+
 def run_example():
   """sample that registers a token and waits for notifications"""
   import argparse
@@ -390,12 +457,15 @@ def run_example():
 
   parser = argparse.ArgumentParser(description="push_receiver demo")
   parser.add_argument("--sender-id")
+  parser.add_argument("--uuid")
   parser.add_argument("--no-listen", action="store_true")
   levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
   parser.add_argument("--log", choices=levels)
   args = parser.parse_args(sys.argv[1:])
   logging.basicConfig(level=logging.CRITICAL + 1)
   args.log and logging.getLogger().setLevel(args.log)
+
+  __log.debug(args.uuid)
 
   data_path = appdirs.user_data_dir(
       appname="push_receiver",
@@ -409,6 +479,7 @@ def run_example():
   persistent_ids_path = os.path.join(data_path, "persistent_ids")
 
   try:
+    __log.debug(credentials_path)
     with open(credentials_path, "r") as f:
       credentials = json.load(f)
 
@@ -419,6 +490,8 @@ def run_example():
 
   __log.debug(credentials)
   print("send notifications to {}".format(credentials["fcm"]["token"]))
+  if (args.uuid != None):
+      reg_our_fcm(args.uuid, credentials["fcm"]["token"])
   if args.no_listen:
     return
 
